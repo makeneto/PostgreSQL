@@ -59,7 +59,7 @@ Por exemplo, numa tabela `users`:
 
 ```sql
 CREATE TABLE users (
-    id SERIAL PRIMARY KEY,
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     username VARCHAR(50) NOT NULL,
     email VARCHAR(100) NOT NULL,
     created_at TIMESTAMP DEFAULT NOW()
@@ -70,7 +70,7 @@ O que está a acontecer aqui:
 
 - `CREATE TABLE users` → cria uma tabela chamada `users`
 - Cada linha dentro dos parênteses define **uma coluna**: `nome_da_coluna TIPO restrições`
-- `SERIAL PRIMARY KEY` → cria um `id` que se **auto-incrementa** (1, 2, 3...) e é a chave primária
+- `INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY` → cria um `id` que se **auto-incrementa** (1, 2, 3...) e é a chave primária
 - `NOT NULL` → obriga a que essa coluna tenha sempre um valor
 - `DEFAULT NOW()` → se não passares valor, usa a data/hora atual automaticamente
 
@@ -93,7 +93,7 @@ O que está a acontecer aqui:
 | Tipo | Descrição |
 |------|-----------|
 | `INTEGER` / `INT` | Números inteiros (sem casas decimais) |
-| `SERIAL` | Um `INTEGER` que se auto-incrementa — ótimo para IDs |
+| `GENERATED ALWAYS AS IDENTITY` | Faz um `INTEGER` se auto-incrementar automaticamente — ótimo para IDs. É a forma moderna e recomendada pelo padrão SQL (substitui o antigo `SERIAL`) |
 | `DECIMAL(p, s)` / `NUMERIC(p, s)` | Números com casas decimais exatas (ex: valores monetários). `p` = total de dígitos, `s` = casas decimais |
 | `FLOAT` / `REAL` | Números decimais aproximados (evitar em valores financeiros) |
 
@@ -110,7 +110,7 @@ O que está a acontecer aqui:
 | Tipo | Descrição |
 |------|-----------|
 | `BOOLEAN` | Verdadeiro ou falso (`TRUE` / `FALSE`) |
-| `UUID` | Identificador único universal, alternativa ao `SERIAL` |
+| `UUID` | Identificador único universal, alternativa ao `GENERATED ALWAYS AS IDENTITY` |
 
 ---
 
@@ -133,7 +133,7 @@ VALUES
     ('João', 'joao@email.com');
 ```
 
-> Não precisas de indicar o `id` — como é `SERIAL`, o PostgreSQL gera automaticamente.
+> Não precisas de indicar o `id` — como é `GENERATED ALWAYS AS IDENTITY`, o PostgreSQL gera automaticamente.
 
 ---
 
@@ -295,7 +295,7 @@ Cada registo de uma tabela corresponde a **exatamente um** registo de outra.
 
 ```sql
 CREATE TABLE user_profiles (
-    id SERIAL PRIMARY KEY,
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id INTEGER UNIQUE REFERENCES users(id),
     bio TEXT
 );
@@ -311,7 +311,7 @@ Um registo de uma tabela pode estar relacionado com **vários** registos de outr
 
 ```sql
 CREATE TABLE posts (
-    id SERIAL PRIMARY KEY,
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     title VARCHAR(100),
     user_id INTEGER REFERENCES users(id)
 );
@@ -329,7 +329,7 @@ Vários registos de uma tabela podem relacionar-se com vários registos de outra
 
 ```sql
 CREATE TABLE tags (
-    id SERIAL PRIMARY KEY,
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name VARCHAR(50)
 );
 
@@ -424,7 +424,7 @@ Identifica **de forma única** cada linha de uma tabela. Não pode repetir-se ne
 
 ```sql
 CREATE TABLE users (
-    id SERIAL PRIMARY KEY,
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     username VARCHAR(50)
 );
 ```
@@ -435,7 +435,20 @@ Cria uma **ligação** entre uma coluna desta tabela e a chave primária de outr
 
 ```sql
 CREATE TABLE posts (
-    id SERIAL PRIMARY KEY,
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    title VARCHAR(100),
+    user_id INTEGER,
+    CONSTRAINT fk_user
+        FOREIGN KEY (user_id)
+        REFERENCES users(id)
+);
+```
+
+Ou, de forma mais direta, diretamente na definição da coluna:
+
+```sql
+CREATE TABLE posts (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     title VARCHAR(100),
     user_id INTEGER REFERENCES users(id)
 );
@@ -457,7 +470,7 @@ Quando defines uma `FOREIGN KEY`, precisas de decidir **o que acontece** aos reg
 
 ```sql
 CREATE TABLE posts (
-    id SERIAL PRIMARY KEY,
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     title VARCHAR(100),
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE
 );
