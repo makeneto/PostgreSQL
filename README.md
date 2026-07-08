@@ -990,3 +990,179 @@ OFFSET 0;
 ```
 
 > Os 5 usuários com mais de 1 post, do maior para o menor.
+
+---
+
+# UNION, UNION ALL, INTERSECT, INTERSECT ALL, EXCEPT e EXCEPT ALL
+
+Até agora combinámos tabelas na **horizontal** com `JOIN` — juntando colunas de tabelas diferentes numa mesma linha. Os operadores de conjunto fazem o oposto: combinam resultados na **vertical**, empilhando as linhas de duas (ou mais) queries `SELECT`.
+
+Imagina que tens duas tabelas separadas de contactos:
+
+### `clientes`
+
+| nome   | email                |
+|--------|----------------------|
+| Makene | makenedev@gmail.com  |
+| Ana    | ana@email.com        |
+
+### `fornecedores`
+
+| nome | email               |
+|------|---------------------|
+| Ana  | ana@email.com       |
+| João | joao@email.com      |
+
+## Regras antes de começar
+
+Para combinar duas queries com estes operadores, ambas precisam:
+
+- Ter o **mesmo número de colunas**
+- Ter colunas com **tipos compatíveis**, na mesma ordem (a 1ª coluna da query 1 é comparada com a 1ª da query 2, e assim por diante)
+
+Os **nomes das colunas** no resultado final vêm sempre da **primeira** query. Se a segunda usar nomes diferentes, isso não importa — só a posição e o tipo contam.
+
+---
+
+# 1. `UNION`
+
+Junta os resultados de duas queries, **removendo duplicados**.
+
+```sql
+SELECT nome, email FROM clientes
+UNION
+SELECT nome, email FROM fornecedores;
+```
+
+Resultado:
+
+| nome   | email                |
+|--------|----------------------|
+| Makene | makenedev@gmail.com  |
+| Ana    | ana@email.com        |
+| João   | joao@email.com       |
+
+Repara que "Ana" aparece nas duas tabelas, mas só sai **uma vez** no resultado — o `UNION` compara linha a linha e descarta repetições.
+
+## `UNION ALL`
+
+Faz a mesma junção, mas **mantém os duplicados**.
+
+```sql
+SELECT nome, email FROM clientes
+UNION ALL
+SELECT nome, email FROM fornecedores;
+```
+
+Resultado:
+
+| nome   | email                |
+|--------|----------------------|
+| Makene | makenedev@gmail.com  |
+| Ana    | ana@email.com        |
+| Ana    | ana@email.com        |
+| João   | joao@email.com       |
+
+**Porque escolher `UNION ALL` em vez de `UNION`?** Desempenho. O `UNION` precisa de ordenar e comparar todas as linhas para eliminar duplicados — um trabalho extra que o `UNION ALL` não faz. Se souberes que não há sobreposição entre as queries (ou se duplicados não forem um problema), usa sempre `UNION ALL`.
+
+---
+
+# 2. `INTERSECT`
+
+Retorna **apenas as linhas que existem nos dois resultados** ao mesmo tempo.
+
+```sql
+SELECT nome, email FROM clientes
+INTERSECT
+SELECT nome, email FROM fornecedores;
+```
+
+Resultado:
+
+| nome | email          |
+|------|----------------|
+| Ana  | ana@email.com  |
+
+Só "Ana" aparece nas duas tabelas, então é a única linha que sobrevive.
+
+## `INTERSECT ALL`
+
+A versão `ALL` também considera **quantas vezes** cada linha aparece em cada lado, mantendo o menor número de repetições entre as duas queries.
+
+Exemplo: se "Ana" aparecer 3 vezes em `clientes` e 2 vezes em `fornecedores`, o `INTERSECT ALL` devolve "Ana" **2 vezes** (o mínimo entre os dois).
+
+### Quando usar `INTERSECT`?
+
+- Encontrar registos comuns entre duas fontes (ex: clientes que também são fornecedores)
+- Validar se duas listas se sobrepõem
+- Auditorias de consistência entre tabelas
+
+---
+
+# 3. `EXCEPT`
+
+Retorna as linhas que existem na **primeira** query, mas **não** na segunda.
+
+```sql
+SELECT nome, email FROM clientes
+EXCEPT
+SELECT nome, email FROM fornecedores;
+```
+
+Resultado:
+
+| nome   | email                |
+|--------|----------------------|
+| Makene | makenedev@gmail.com  |
+
+"Makene" só existe em `clientes`, então é o único que sobra. "Ana" foi excluído porque também aparece em `fornecedores`.
+
+## `EXCEPT ALL`
+
+Mantém duplicados, subtraindo as ocorrências. Se "Ana" aparecer 3 vezes em `clientes` e 1 vez em `fornecedores`, o `EXCEPT ALL` devolve "Ana" **2 vezes** (3 - 1).
+
+### A ordem importa aqui
+
+Ao contrário de `UNION` e `INTERSECT`, o `EXCEPT` **não é comutativo** — trocar a ordem das queries muda o resultado.
+
+```sql
+-- Clientes que não são fornecedores
+SELECT nome, email FROM clientes
+EXCEPT
+SELECT nome, email FROM fornecedores;
+
+-- Fornecedores que não são clientes (resultado diferente)
+SELECT nome, email FROM fornecedores
+EXCEPT
+SELECT nome, email FROM clientes;
+```
+
+A pergunta a fazer é sempre: *"o que tem a primeira query que a segunda não tem?"*
+
+---
+
+# `ORDER BY` com operadores de conjunto
+
+O `ORDER BY` só pode aparecer **uma vez**, no final de tudo, e aplica-se ao **resultado combinado** — não a cada query individualmente. Também não podes usar o prefixo da tabela, só o nome da coluna (ou alias) do resultado final.
+
+```sql
+SELECT nome, email FROM clientes
+UNION
+SELECT nome, email FROM fornecedores
+ORDER BY nome ASC;
+```
+
+---
+
+# Resumo (Operadores de Conjunto)
+
+| Operador         | Retorna                              | Remove duplicados? |
+|------------------|---------------------------------------|---------------------|
+| `UNION`          | Linhas de ambas as queries            | Sim |
+| `UNION ALL`      | Linhas de ambas as queries            | Não |
+| `INTERSECT`      | Linhas presentes nas duas queries     | Sim |
+| `INTERSECT ALL`  | Linhas presentes nas duas queries     | Não (mantém o mínimo de ocorrências) |
+| `EXCEPT`         | Linhas só na primeira query           | Sim |
+| `EXCEPT ALL`     | Linhas só na primeira query           | Não (subtrai ocorrências) |
+
+**Regra de ouro:** se não precisas de eliminar duplicados, usa sempre a versão `ALL` — é mais rápida porque poupa o banco de ter que comparar e ordenar todas as linhas.
