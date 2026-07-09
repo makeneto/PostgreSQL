@@ -1043,6 +1043,7 @@ Resultado:
 | João   | joao@email.com       |
 
 Repara que "Ana" aparece nas duas tabelas, mas só sai **uma vez** no resultado — o `UNION` compara linha a linha e descarta repetições.
+> UNION — usa quando queres juntar os resultados de duas queries num único conjunto, e não te interessa ter linhas duplicadas. Pensa nisto: se tens uma tabela de clientes_luanda e outra de clientes_benguela, e queres uma lista única de todos os emails de contacto sem repetição, UNION resolve isso. Ele remove duplicados automaticamente, o que implica um custo — o Postgres tem de ordenar ou fazer hash nos resultados para detectar e eliminar as repetições.
 
 ## `UNION ALL`
 
@@ -1065,6 +1066,8 @@ Resultado:
 
 **Porque escolher `UNION ALL` em vez de `UNION`?** Desempenho. O `UNION` precisa de ordenar e comparar todas as linhas para eliminar duplicados — um trabalho extra que o `UNION ALL` não faz. Se souberes que não há sobreposição entre as queries (ou se duplicados não forem um problema), usa sempre `UNION ALL`.
 
+> UNION ALL — usa quando queres a mesma junção de resultados, mas sabes que não vão existir duplicados (ou não te importas se existirem). É mais rápido que UNION porque salta o passo de deduplicação. Regra prática: se estás a combinar dados de fontes que já são mutuamente exclusivas (ex: pedidos de 2024 UNION pedidos de 2025), usa ALL — não há motivo para pagar o custo de verificar duplicados que nunca vão aparecer.
+
 ---
 
 # 2. `INTERSECT`
@@ -1085,17 +1088,15 @@ Resultado:
 
 Só "Ana" aparece nas duas tabelas, então é a única linha que sobrevive.
 
+> INTERSECT — usa quando precisas de saber que linhas aparecem nas duas queries ao mesmo tempo. É útil para perguntas do tipo "quais clientes compraram tanto no mês passado como este mês?" — pegas na lista de IDs de cada mês e fazes a intersecção. O resultado dá-te só o que é comum, sem duplicados.
+
 ## `INTERSECT ALL`
 
 A versão `ALL` também considera **quantas vezes** cada linha aparece em cada lado, mantendo o menor número de repetições entre as duas queries.
 
 Exemplo: se "Ana" aparecer 3 vezes em `clientes` e 2 vezes em `fornecedores`, o `INTERSECT ALL` devolve "Ana" **2 vezes** (o mínimo entre os dois).
 
-### Quando usar `INTERSECT`?
-
-- Encontrar registos comuns entre duas fontes (ex: clientes que também são fornecedores)
-- Validar se duas listas se sobrepõem
-- Auditorias de consistência entre tabelas
+> INTERSECT ALL — a diferença aqui é sutil e tem a ver com quantidade. Se um cliente aparece 3 vezes na primeira query e 2 vezes na segunda, o INTERSECT normal dá-te só 1 linha (porque é conjunto, sem repetição). O INTERSECT ALL dá-te o mínimo entre as duas contagens — neste caso, 2 linhas. Usa isto quando a frequência importa, não só a presença.
 
 ---
 
@@ -1116,6 +1117,8 @@ Resultado:
 | Makene | makenedev@gmail.com  |
 
 "Makene" só existe em `clientes`, então é o único que sobra. "Ana" foi excluído porque também aparece em `fornecedores`.
+
+> EXCEPT — usa quando queres saber o que está numa query mas não está na outra. Exemplo clássico: "quais produtos estão no catálogo mas nunca foram vendidos?" — catálogo EXCEPT produtos_vendidos. Dá-te a diferença de conjuntos, sem duplicados.
 
 ## `EXCEPT ALL`
 
@@ -1139,6 +1142,21 @@ SELECT nome, email FROM clientes;
 
 A pergunta a fazer é sempre: *"o que tem a primeira query que a segunda não tem?"*
 
+> EXCEPT ALL — mesma lógica de diferença, mas preservando contagem. Se um produto aparece 5 vezes numa lista e 2 vezes na outra que estás a subtrair, o EXCEPT ALL deixa 3 linhas desse produto. É raramente necessário, mas aparece quando estás a comparar registos linha-a-linha (tipo auditoria: "quais destas transações na tabela A não têm correspondência na tabela B, contando repetições").
+
+# Resumo (Operadores de Conjunto)
+
+| Operador         | Retorna                              | Remove duplicados? |
+|------------------|---------------------------------------|---------------------|
+| `UNION`          | Linhas de ambas as queries            | Sim |
+| `UNION ALL`      | Linhas de ambas as queries            | Não |
+| `INTERSECT`      | Linhas presentes nas duas queries     | Sim |
+| `INTERSECT ALL`  | Linhas presentes nas duas queries     | Não (mantém o mínimo de ocorrências) |
+| `EXCEPT`         | Linhas só na primeira query           | Sim |
+| `EXCEPT ALL`     | Linhas só na primeira query           | Não (subtrai ocorrências) |
+
+**Regra de ouro:** se não precisas de eliminar duplicados, usa sempre a versão `ALL` — é mais rápida porque poupa o banco de ter que comparar e ordenar todas as linhas.
+
 ---
 
 # `ORDER BY` com operadores de conjunto
@@ -1153,16 +1171,3 @@ ORDER BY nome ASC;
 ```
 
 ---
-
-# Resumo (Operadores de Conjunto)
-
-| Operador         | Retorna                              | Remove duplicados? |
-|------------------|---------------------------------------|---------------------|
-| `UNION`          | Linhas de ambas as queries            | Sim |
-| `UNION ALL`      | Linhas de ambas as queries            | Não |
-| `INTERSECT`      | Linhas presentes nas duas queries     | Sim |
-| `INTERSECT ALL`  | Linhas presentes nas duas queries     | Não (mantém o mínimo de ocorrências) |
-| `EXCEPT`         | Linhas só na primeira query           | Sim |
-| `EXCEPT ALL`     | Linhas só na primeira query           | Não (subtrai ocorrências) |
-
-**Regra de ouro:** se não precisas de eliminar duplicados, usa sempre a versão `ALL` — é mais rápida porque poupa o banco de ter que comparar e ordenar todas as linhas.
