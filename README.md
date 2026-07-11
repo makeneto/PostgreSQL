@@ -1285,3 +1285,162 @@ WHERE NOT EXISTS (
 ```
 
 > "Todos os usuários que nunca postaram" — a alternativa segura ao `NOT IN`, porque `NOT EXISTS` não tem o problema do `NULL`.
+
+---
+
+# ALL e SOME (ANY)
+
+Servem para comparar um valor com **cada linha** devolvida por uma subquery, sem precisar de `IN` ou `EXISTS`. A diferença para o `IN` é que `ALL` e `SOME` funcionam com qualquer operador de comparação (`>`, `<`, `>=`, `<=`, `=`, `!=`), não só igualdade.
+
+Vamos usar a tabela `products`, agora com uma coluna `category`:
+
+### `products`
+
+| id | name       | category    | price |
+|----|------------|-------------|-------|
+| 1  | Teclado    | Informática | 50    |
+| 2  | Monitor    | Informática | 300   |
+| 3  | Cadeira    | Escritório  | 200   |
+| 4  | Secretária | Escritório  | 400   |
+
+---
+
+## `ALL`
+
+A condição só é verdadeira se for verdadeira para **todos** os valores devolvidos pela subquery.
+
+```sql
+SELECT name, price
+FROM products
+WHERE price > ALL (
+    SELECT price FROM products WHERE category = 'Escritório'
+);
+```
+
+> "Produtos mais caros que **todos** os produtos da categoria Escritório."
+
+Isto é equivalente a comparar com o **maior valor** do grupo:
+
+```sql
+WHERE price > (SELECT MAX(price) FROM products WHERE category = 'Escritório')
+```
+
+## `SOME` / `ANY`
+
+`SOME` e `ANY` são sinónimos — o PostgreSQL trata-os da mesma forma, usa o que preferires. A condição é verdadeira se for verdadeira para **pelo menos um** dos valores devolvidos.
+
+```sql
+SELECT name, price
+FROM products
+WHERE price > SOME (
+    SELECT price FROM products WHERE category = 'Escritório'
+);
+```
+
+> "Produtos mais caros que **pelo menos um** produto da categoria Escritório."
+
+Equivalente a comparar com o **menor valor** do grupo:
+
+```sql
+WHERE price > (SELECT MIN(price) FROM products WHERE category = 'Escritório')
+```
+
+## `= ANY` é o mesmo que `IN`
+
+```sql
+SELECT name FROM products WHERE category = ANY (SELECT category FROM products WHERE price > 100);
+-- é o mesmo que:
+SELECT name FROM products WHERE category IN (SELECT category FROM products WHERE price > 100);
+```
+
+> `IN` só serve para igualdade. `ANY`/`SOME` fazem o mesmo, mas aceitam qualquer operador de comparação — é por isso que existem os dois.
+
+## Resumo (ALL / SOME / ANY)
+
+| Operador     | Verdadeiro quando...               | Equivale a     |
+|--------------|-------------------------------------|----------------|
+| `> ALL`      | maior que **todos** os valores      | `> MAX(...)`   |
+| `> SOME/ANY` | maior que **pelo menos um** valor   | `> MIN(...)`   |
+| `= ANY`      | igual a **pelo menos um** valor     | `IN (...)`     |
+| `<> ALL`     | diferente de **todos** os valores   | `NOT IN (...)` |
+
+> **Atenção:** tal como no `NOT IN`, se a subquery devolver `NULL` no meio dos resultados, comparações com `ALL` podem dar resultados inesperados (nem verdadeiro, nem falso). O mesmo cuidado aplica-se aqui.
+
+---
+
+# `SELECT` sem `FROM`
+ 
+Nem todo `SELECT` precisa de uma tabela. Quando queres calcular uma expressão, testar uma função, ou gerar um valor fixo, podes usar `SELECT` sozinho — sem `FROM`.
+ 
+```sql
+SELECT 1 + 1;
+```
+ 
+Resultado: uma linha, uma coluna, valor `2`. Não há tabela nenhuma envolvida — é só o PostgreSQL a avaliar a expressão.
+ 
+## Casos de uso comuns
+ 
+```sql
+-- Testar uma expressão ou cálculo rápido
+SELECT 100 * 1.14 AS preco_com_iva;
+ 
+-- Ver a data e hora atual
+SELECT NOW();
+ 
+-- Ver a versão do PostgreSQL
+SELECT version();
+ 
+-- Gerar um UUID
+SELECT gen_random_uuid();
+ 
+-- Testar o resultado de uma função de string
+SELECT UPPER('makene');
+```
+ 
+> Repara que é exatamente a mesma lógica das **colunas calculadas** que já vimos — só que sem nenhuma tabela por trás. `SELECT` sempre devolve uma linha por padrão; sem `FROM`, essa linha é "inventada" na hora, só para caber o resultado da expressão.
+ 
+## Onde isto é útil na prática
+ 
+- Testar rapidamente se uma função faz o que esperas, antes de a usar numa query grande
+- Gerar valores (UUID, timestamp) para usar num `INSERT`
+- Verificar configurações da base de dados (`SHOW timezone;`, `SELECT current_database();`)
+## `SELECT` sem `FROM`, mas com o `FROM` "escondido" dentro dos parênteses
+ 
+Há uma variação deste caso que confunde no início: o `SELECT` de fora **não tem `FROM` nenhum**, mas dentro dos parênteses vai uma subquery completa, com o seu próprio `FROM`. Ou seja, o `FROM` existe — só que pertence à subquery, não à query externa.
+ 
+```sql
+SELECT (SELECT MAX(price) FROM products) AS preco_mais_caro;
+```
+ 
+Repara na estrutura:
+ 
+- A query de fora é só `SELECT (...) AS preco_mais_caro` — **sem `FROM`**
+- Dentro dos parênteses, `(SELECT MAX(price) FROM products)` é uma **subquery escalar completa**, com o seu próprio `FROM`
+- O resultado da subquery (um único valor) é tratado como se fosse uma constante, exatamente como uma expressão `1 + 1`
+> A lógica é a mesma da secção anterior: `SELECT` sem `FROM` devolve sempre uma linha "inventada" para caber o resultado. A diferença é que aqui o resultado não é um valor literal escrito à mão — é calculado por uma query inteira, escondida dentro dos parênteses.
+ 
+### Podes combinar vários
+ 
+```sql
+SELECT
+    (SELECT COUNT(*) FROM users)  AS total_users,
+    (SELECT COUNT(*) FROM posts)  AS total_posts,
+    (SELECT MAX(price) FROM products) AS preco_mais_caro;
+```
+ 
+Resultado: **uma única linha**, com três colunas — cada uma vinda de uma subquery independente, cada uma com o seu próprio `FROM` lá dentro. A query externa continua sem `FROM`, porque não está a buscar nada de nenhuma tabela diretamente; só está a juntar os resultados das três subqueries numa linha.
+ 
+> Isto é muito usado para montar "dashboards" rápidos — várias métricas resumidas numa única linha, sem precisar de vários `SELECT`s separados nem de `JOIN`s complicados.
+ 
+### Cuidado: continua a ser uma subquery escalar
+ 
+Tal como na subquery escalar dentro do `WHERE`, cada uma destas subqueries tem de devolver **exatamente uma linha e uma coluna**. Se devolver mais do que uma linha, o PostgreSQL dá erro — porque não há como encaixar várias linhas dentro de uma única célula do resultado.
+ 
+```sql
+-- ❌ Erro: devolve várias linhas, não cabe numa célula
+SELECT (SELECT price FROM products) AS preco;
+ 
+-- ✅ Certo: agregada para devolver um único valor
+SELECT (SELECT MAX(price) FROM products) AS preco;
+```
+ 
