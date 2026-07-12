@@ -1578,3 +1578,64 @@ FROM products;
 ```
 
 > **Regra de ouro:** `GREATEST`/`LEAST` ignoram `NULL`, a menos que todos os argumentos sejam `NULL`.
+
+---
+
+# A expressão `CASE`
+
+`CASE` permite aplicar lógica condicional dentro de uma query — o equivalente a um `if/else` do SQL. Devolve um valor diferente consoante a condição, avaliada linha a linha.
+
+```sql
+SELECT nome, preco,
+    CASE
+        WHEN preco > 300 THEN 'Caro'
+        WHEN preco > 100 THEN 'Médio'
+        ELSE 'Barato'
+    END AS faixa_preco
+FROM products;
+```
+
+### `products`
+
+| nome    | preco | faixa_preco |
+|---------|-------|-------------|
+| Teclado | 50    | Barato      |
+| Cadeira | 200   | Médio       |
+| Monitor | 320   | Caro        |
+
+> As condições `WHEN` são avaliadas **em ordem**, de cima para baixo. Assim que uma for verdadeira, o `CASE` para e usa esse resultado — as seguintes nem são avaliadas.
+
+## `CASE` simples (comparação direta)
+
+Quando a comparação é sempre com a mesma coluna, pode simplificar-se:
+
+```sql
+SELECT nome,
+    CASE categoria
+        WHEN 'Informática' THEN 'Tech'
+        WHEN 'Escritório' THEN 'Móveis'
+        ELSE 'Outro'
+    END AS tipo
+FROM products;
+```
+
+Equivale a `CASE WHEN categoria = 'Informática' THEN ...`, só que mais direto.
+
+## `ELSE` é opcional
+
+Se nenhuma condição for verdadeira e não houver `ELSE`, o resultado é `NULL`.
+
+## Usando com agregação
+
+```sql
+SELECT
+    COUNT(CASE WHEN preco > 300 THEN 1 END) AS produtos_caros,
+    COUNT(CASE WHEN preco <= 300 THEN 1 END) AS produtos_baratos
+FROM products;
+```
+
+| produtos_caros | produtos_baratos |
+|-----------------|--------------------|
+| 1               | 2                  |
+
+> **Regra de ouro:** `COUNT` só conta valores não nulos — por isso `CASE WHEN condição THEN 1 END` (sem `ELSE`) funciona como um contador condicional: linhas que não batem a condição viram `NULL` e são ignoradas.
