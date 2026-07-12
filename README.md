@@ -1443,4 +1443,88 @@ SELECT (SELECT price FROM products) AS preco;
 -- ✅ Certo: agregada para devolver um único valor
 SELECT (SELECT MAX(price) FROM products) AS preco;
 ```
+
+---
+
+# `SELECT DISTINCT`
+
+O `DISTINCT` remove linhas duplicadas do resultado de uma query. Em vez de devolver todos os valores repetidos, o PostgreSQL agrupa os que são idênticos e mostra só um de cada.
+
+Vamos usar a tabela `pedidos`:
+
+### `pedidos`
+
+| id | cidade   | produto  |
+|----|----------|----------|
+| 1  | Luanda   | Teclado  |
+| 2  | Benguela | Monitor  |
+| 3  | Luanda   | Cadeira  |
+| 4  | Huambo   | Teclado  |
+| 5  | Luanda   | Monitor  |
+
+---
+
+## `DISTINCT` numa única coluna
+
+```sql
+SELECT DISTINCT cidade
+FROM pedidos;
+```
+
+Sem `DISTINCT`, a coluna `cidade` traria 5 linhas (com `Luanda` repetido 3 vezes). Com `DISTINCT`, o PostgreSQL elimina as repetições:
+
+**Resultado:**
+
+| cidade   |
+|----------|
+| Luanda   |
+| Benguela |
+| Huambo   |
+
+> **Regra de ouro:** `DISTINCT` atua **depois** de o PostgreSQL já ter buscado as linhas — ele não impede a leitura dos dados, só remove duplicados do resultado final.
+
+---
+
+## `COUNT(DISTINCT coluna)`
+
+Enquanto `SELECT DISTINCT` devolve **as linhas** únicas, `COUNT(DISTINCT coluna)` devolve **quantos** valores únicos existem — um único número.
+
+```sql
+SELECT COUNT(DISTINCT cidade) AS total_cidades
+FROM pedidos;
+```
+
+**Resultado:**
+
+| total_cidades |
+|---------------|
+| 3             |
+
+Compara com um `COUNT(*)` simples, que conta todas as linhas, incluindo repetições:
+
+| Query                     | O que conta                    | Resultado |
+|----------------------------|----------------------------------|-----------|
+| `COUNT(*)`                 | Todas as linhas da tabela        | 5         |
+| `COUNT(cidade)`             | Linhas com `cidade` não nula     | 5         |
+| `COUNT(DISTINCT cidade)`   | Valores **únicos** de `cidade`   | 3         |
+
+### Combinando com `GROUP BY`
+
+`COUNT(DISTINCT coluna)` é muito usado junto com `GROUP BY`, para responder perguntas como "quantos produtos diferentes cada cidade comprou?":
+
+```sql
+SELECT cidade, COUNT(DISTINCT produto) AS produtos_diferentes
+FROM pedidos
+GROUP BY cidade;
+```
+
+**Resultado:**
+
+| cidade   | produtos_diferentes |
+|----------|-----------------------|
+| Luanda   | 3                     |
+| Benguela | 1                     |
+| Huambo   | 1                     |
+
+> 💡 **Dica:** usa `SELECT DISTINCT` quando queres **ver os valores** únicos; usa `COUNT(DISTINCT ...)` quando só precisas de **saber quantos** existem, sem listar cada um.
  
