@@ -480,6 +480,107 @@ ADD UNIQUE (student_id, course_id);
 
 **Regra de ouro:** usa `UNIQUE` numa coluna quando o valor tem de ser único sozinho (ex: `email`); usa `UNIQUE` em várias colunas quando é a **combinação** delas que representa um registo que não pode duplicar-se (ex: um aluno não pode inscrever-se duas vezes na mesma disciplina).
 
+## `CHECK`
+
+Garante que os valores de uma coluna **respeitam uma condição** definida por ti. Se um `INSERT` ou `UPDATE` tentar gravar um valor que viole a condição, o PostgreSQL rejeita o comando.
+
+```sql
+-- Ao criar a tabela
+CREATE TABLE products (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    department VARCHAR(50) NOT NULL,
+    price INTEGER CHECK (price > 0),
+    weight INTEGER
+);
+```
+
+```sql
+-- Depois de a tabela já existir
+ALTER TABLE products
+ADD CHECK (price > 0);
+```
+
+> 💡 **Dica:** tal como as outras constraints, também podes nomear o `CHECK`, o que ajuda a identificá-lo depois (ex: para o remover): `ALTER TABLE products ADD CONSTRAINT products_price_positive CHECK (price > 0);`.
+
+> ⚠️ **Atenção:** para conseguires adicionar um `CHECK` a uma tabela já existente, todas as linhas atuais têm de já respeitar a condição. Se houver algum valor que viole a regra (ex: um `price` negativo), o PostgreSQL rejeita o comando.
+
+## `CHECK` em várias colunas (Multi-column CHECK)
+
+Tal como o `UNIQUE`, o `CHECK` também pode envolver **mais do que uma coluna** na mesma condição — útil quando a regra de negócio depende da **relação** entre dois (ou mais) valores da mesma linha, e não de uma coluna isolada.
+
+**Exemplo:** numa tabela `products`, o `price` de venda tem de ser sempre maior que o `cost` (custo), senão a empresa vende com prejuízo.
+
+```sql
+-- Ao criar a tabela
+CREATE TABLE products (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    cost INTEGER NOT NULL,
+    price INTEGER NOT NULL,
+    CHECK (price > cost)
+);
+```
+
+```sql
+-- Depois de a tabela já existir
+ALTER TABLE products
+ADD CHECK (price > cost);
+```
+
+> 💡 **Dica:** também podes combinar várias condições numa só constraint com `AND` / `OR`: `CHECK (price > cost AND price > 0)`.
+
+Outro exemplo comum: garantir que uma `date_end` nunca é anterior a uma `date_start`:
+
+```sql
+ALTER TABLE bookings
+ADD CHECK (date_end >= date_start);
+```
+
+> ⚠️ **Atenção:** tal como no `CHECK` de uma coluna, ao adicionares a uma tabela já existente, todas as linhas atuais têm de já respeitar a condição — senão o PostgreSQL rejeita o comando.
+
+**Regra de ouro:** usa `CHECK` numa coluna quando a regra depende só dela (ex: `price > 0`); usa `CHECK` em várias colunas quando a regra depende da **relação** entre elas (ex: `price > cost`, `date_end >= date_start`).
+
+## `CHECK` não funciona entre várias linhas
+
+Uma limitação importante: o `CHECK` só consegue avaliar valores **dentro da mesma linha**. Não há forma de escrever um `CHECK` que compare uma linha com outras linhas da tabela (ex: "o `price` desta linha não pode ser maior que a média de todos os `price`", ou "só pode haver 1 produto marcado como `is_featured = true`").
+
+```sql
+-- ❌ Isto NÃO funciona — CHECK não pode olhar para outras linhas
+ALTER TABLE products
+ADD CHECK (price < (SELECT AVG(price) FROM products));
+-- Erro: subqueries não são permitidas dentro de CHECK
+```
+
+### Alternativas quando precisas de validar entre linhas
+
+| Situação | Alternativa |
+|----------|-------------|
+| Impedir combinações repetidas (ex: um aluno não pode inscrever-se 2x na mesma disciplina) | `UNIQUE` em várias colunas |
+| Impedir sobreposição de intervalos (ex: duas reservas não podem ocupar o mesmo quarto ao mesmo tempo) | `EXCLUDE` constraint (usa `btree_gist`) |
+| Validações mais complexas envolvendo várias linhas (ex: "só pode haver 1 produto em destaque") | `TRIGGER` que corre um `SELECT` antes do `INSERT`/`UPDATE` e rejeita se a condição falhar |
+
+Exemplo simples de `TRIGGER` para o caso do "só 1 produto em destaque":
+
+```sql
+CREATE OR REPLACE FUNCTION check_single_featured()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.is_featured = TRUE AND
+       EXISTS (SELECT 1 FROM products WHERE is_featured = TRUE AND id != NEW.id) THEN
+        RAISE EXCEPTION 'Já existe um produto marcado como destaque';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_single_featured
+BEFORE INSERT OR UPDATE ON products
+FOR EACH ROW EXECUTE FUNCTION check_single_featured();
+```
+
+> **Regra de ouro:** `CHECK` é para regras **dentro da própria linha**. Assim que a regra depende de comparar com outras linhas da tabela, `CHECK` deixa de servir — precisas de `UNIQUE`, `EXCLUDE` ou um `TRIGGER`.
+
 ## Resumo (Constraints)
 
 | Constraint | Na criação da tabela | Depois de criada |
@@ -488,8 +589,9 @@ ADD UNIQUE (student_id, course_id);
 | `NOT NULL` | `price INTEGER NOT NULL` | `ALTER COLUMN price SET NOT NULL;` |
 | `UNIQUE` | `name VARCHAR(50) UNIQUE` | `ADD UNIQUE (name);` |
 | `UNIQUE` (multi-coluna) | `UNIQUE (student_id, course_id)` | `ADD UNIQUE (student_id, course_id);` |
+| `CHECK` | `price INTEGER CHECK (price > 0)` | `ADD CHECK (price > 0);` |
 
-**Regra de ouro:** o padrão é sempre o mesmo — `ALTER TABLE tabela ALTER COLUMN coluna SET ...` para `DEFAULT` e `NOT NULL`, e `ALTER TABLE tabela ADD ...` para constraints como `UNIQUE` e `FOREIGN KEY`, que envolvem a tabela como um todo em vez de só um atributo da coluna.
+**Regra de ouro:** o padrão é sempre o mesmo — `ALTER TABLE tabela ALTER COLUMN coluna SET ...` para `DEFAULT` e `NOT NULL`, e `ALTER TABLE tabela ADD ...` para constraints como `UNIQUE`, `CHECK` e `FOREIGN KEY`, que envolvem a tabela como um todo em vez de só um atributo da coluna.
 
 ---
 
